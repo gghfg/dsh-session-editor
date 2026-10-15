@@ -1,0 +1,19 @@
+# 依赖（用 npm install 重新装）
+node_modules/
+
+# 本机数据：改写历史。里面存着被改写回复的正文副本和本机绝对路径，
+# 既不适合公开，也没有版本控制价值。
+.edit-history.json
+.edit-history.json.*
+
+# 会话日志的备份（由 rewrite 产生）
+*.bak-*
+
+# 按「保留现场」手动留下的版本
+*.mine-before-restore
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

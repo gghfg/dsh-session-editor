@@ -1,0 +1,46 @@
+{
+  "name": "dsh-session-editor",
+  "version": "0.1.0",
+  "description": "Graphical editor for DeepSeek Harness session logs: rewrite assistant replies so later model requests treat them as things the assistant actually said. / 带图形界面的 DSH 会话日志编辑器：改写助手回复，让后续模型请求把它当成助手自己说过的话。",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "session",
+    "session-log",
+    "zstd",
+    "jsonl",
+    "editor",
+    "gui",
+    "llm",
+    "agent"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:no-open": "node server.mjs --no-open",
+    "list": "node tools/session-store.mjs list --limit=10",
+    "verify": "node tools/verify-log.mjs",
+    "scan": "node tools/scan-frames.mjs",
+    "test": "node test/run-all.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2"
+  },
+  "files": [
+    "server.mjs",
+    "start.cmd",
+    "start.ps1",
+    "web",
+    "tools",
+    "test",
+    "README.md",
+    "GITHUB.md",
+    "LICENSE"
+  ]
+}

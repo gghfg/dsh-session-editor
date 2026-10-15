@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DSH 会话编辑器</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f6f7;
+        --panel: #ffffff;
+        --border: #e3e3e6;
+        --text: #1b1b1f;
+        --muted: #6b6b74;
+        --accent: #2f6fed;
+        --accent-soft: #eaf0fe;
+        --danger: #c0392b;
+        --warn-bg: #fff6e5;
+        --warn-border: #f0c98a;
+        --ok: #1f7a45;
+        --code: #f1f1f4;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #17171a;
+          --panel: #1f1f24;
+          --border: #303038;
+          --text: #e9e9ee;
+          --muted: #9a9aa5;
+          --accent: #6b96ff;
+          --accent-soft: #23293c;
+          --danger: #ef7c6f;
+          --warn-bg: #33290f;
+          --warn-border: #6a5320;
+          --ok: #62c98d;
+          --code: #26262c;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      aside {
+        width: 320px;
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        background: var(--panel);
+        min-height: 0;
+      }
+      aside header { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+      aside h1 { margin: 0 0 2px; font-size: 15px; }
+      aside .sub { color: var(--muted); font-size: 12px; }
+      .searchwrap { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+      input[type="search"], textarea {
+        width: 100%;
+        font: inherit;
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 7px 10px;
+      }
+      textarea { padding: 10px 12px; line-height: 1.7; resize: vertical; }
+      input[type="search"]:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+      #sessions { overflow: auto; flex: 1; padding: 6px 8px 16px; min-height: 0; }
+      .wsgroup { margin: 10px 4px 4px; font-size: 11px; color: var(--muted); word-break: break-all; }
+      .session { padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+      .session:hover { background: var(--bg); }
+      .session.active { background: var(--accent-soft); border-color: var(--accent); }
+      /* 开场白标题是主要识别信息，所以给它最大的视觉权重 */
+      .session .title {
+        font-size: 13px;
+        font-weight: 600;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .session .meta { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        margin-left: 6px;
+        vertical-align: 1px;
+      }
+
+      .badge.archived {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+
+      main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+      #topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+        flex-wrap: wrap;
+      }
+      #topbar .title { font-weight: 600; font-size: 13px; word-break: break-all; }
+      #topbar .spacer { flex: 1; }
+      #topbar .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+      #topbar input[type="search"] { width: 200px; padding: 5px 10px; font-size: 13px; }
+      .switch { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+      #banner { display: none; margin: 10px 16px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--warn-border); background: var(--warn-bg); font-size: 13px; }
+      #banner.show { display: block; }
+      #list { overflow: auto; padding: 12px 16px 40px; flex: 1; min-height: 0; }
+
+      /* 过程消息（工具轮）视觉上明显弱化，和真正的回答区分开 */
+      .card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px 14px; margin-bottom: 10px; }
+      .card.editing { border-color: var(--accent); }
+      .card.process { opacity: 0.62; border-style: dashed; padding: 8px 12px; margin-bottom: 6px; }
+      .card .head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+      .card .head .seq { font-family: ui-monospace, Consolas, monospace; color: var(--text); font-weight: 600; }
+      .card .head .spacer { flex: 1; }
+      .card .body { margin-top: 6px; white-space: pre-wrap; word-break: break-word; max-height: 9.6em; overflow: hidden; }
+      .card .body.expanded { max-height: none; }
+      .card .body.reasoning { color: var(--muted); font-style: italic; font-size: 13px; }
+      .card .actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .muted { color: var(--muted); font-size: 12px; }
+
+      button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+      button:hover { border-color: var(--accent); color: var(--accent); }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button.primary:hover { color: #fff; opacity: 0.9; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.link { border: none; background: none; padding: 0; color: var(--accent); }
+      button.link:hover { text-decoration: underline; }
+
+      .tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+      .tag.tool { border-color: var(--warn-border); }
+      label.check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+      .err { color: var(--danger); font-size: 12px; }
+      .history { border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 8px; font-size: 12px; }
+      .history .row { display: flex; gap: 8px; align-items: baseline; }
+      .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <header>
+        <h1>DSH 会话编辑器</h1>
+        <div class="sub">改写助手回复，模型会把它当成自己说过的话</div>
+      </header>
+      <div class="searchwrap">
+        <input id="sessionSearch" type="search" placeholder="按标题 / 会话号 / 工作区筛选…" />
+      </div>
+      <div id="sessions"></div>
+    </aside>
+
+    <main>
+      <div id="topbar">
+        <span class="title" id="title">未选择会话</span>
+        <span class="spacer"></span>
+        <input id="messageSearch" type="search" placeholder="在本会话回复里搜…" />
+        <label class="switch"><input id="showProcess" type="checkbox" /> 显示过程消息（工具调用轮）</label>
+        <span class="count" id="count"></span>
+        <button id="refresh">刷新</button>
+      </div>
+      <div id="banner"></div>
+      <div id="list"><div class="empty">从左侧选一个会话</div></div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id)
+      let sessions = []
+      let current = null
+      let messages = []
+      let history = []
+      let sessionFilter = ''
+      let messageFilter = ''
+      let expanded = new Set()
+      let editing = null
+
+      // 一条助手消息属于哪一类：
+      //   answer  —— 有实质正文，也就是模型「回答你的话」
+      //   process —— 这一轮主要在驱动工具（实测 1631 条里 1032 条根本没有正文）
+      // 判据来自实测：正文 >=150 字符的基本都是真回答；无正文或很短的都在驱动工具。
+      const ANSWER_MIN_CHARS = 150
+      function isProcess(message) {
+        const length = message.text.trim().length
+        return length === 0 || (message.hasTool === true && length < ANSWER_MIN_CHARS)
+      }
+      function visibleMessages() {
+        const showProcess = $('showProcess').checked
+        const needle = messageFilter.trim().toLowerCase()
+        return messages.filter((message) => {
+          if (!showProcess && isProcess(message)) return false
+          if (needle.length > 0 && !message.text.toLowerCase().includes(needle)) return false
+          return true
+        })
+      }
+
+      async function api(path, options) {
+        const response = await fetch(path, options)
+        return await response.json()
+      }
+
+      function fmtTime(ms) {
+        const d = new Date(ms)
+        const pad = (n) => String(n).padStart(2, '0')
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      function fmtSize(bytes) {
+        return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`
+      }
+
+      async function loadSessions() {
+        const data = await api('/api/sessions')
+        sessions = data.sessions ?? []
+        renderSessions()
+        loadTitles()
+      }
+
+      /** 标题要解析日志，所以先把列表画出来，标题再补进去。 */
+      async function loadTitles() {
+        const pending = sessions.filter((item) => item.title === null || item.title === '')
+        let cursor = 0
+        const worker = async () => {
+          for (;;) {
+            const index = cursor
+            cursor += 1
+            const item = pending[index]
+            if (item === undefined) return
+            try {
+              const data = await api(`/api/title?session=${encodeURIComponent(item.sessionId)}`)
+              // 空会话（只有权限记录、没有对话）也标出来，免得一直停在「读取中」。
+              item.title = data.ok === true && typeof data.title === 'string' && data.title.length > 0
+                ? data.title
+                : '（空会话 · 没有对话内容）'
+              renderSessions()
+            } catch {
+              /* 拿不到标题就继续用会话号显示 */
+            }
+          }
+        }
+        await Promise.all([worker(), worker(), worker(), worker()])
+      }
+
+      function renderSessions() {
+        const box = $('sessions')
+        const needle = sessionFilter.trim().toLowerCase()
+        const shown = sessions.filter((s) => {
+          if (needle.length === 0) return true
+          return (
+            s.sessionId.toLowerCase().includes(needle) ||
+            s.workspace.toLowerCase().includes(needle) ||
+            (typeof s.title === 'string' && s.title.toLowerCase().includes(needle))
+          )
+        })
+        if (shown.length === 0) {
+          box.innerHTML = '<div class="empty">没有匹配的会话</div>'
+          return
+        }
+        const groups = new Map()
+        for (const s of shown) {
+          if (!groups.has(s.workspace)) groups.set(s.workspace, [])
+          groups.get(s.workspace).push(s)
+        }
+        box.innerHTML = ''
+        for (const [workspace, items] of groups) {
+          const head = document.createElement('div')
+          head.className = 'wsgroup'
+          head.textContent = workspace
+          box.append(head)
+          for (const s of items) {
+            const row = document.createElement('div')
+            row.className = 'session' + (current !== null && current.sessionId === s.sessionId ? ' active' : '')
+            const title = document.createElement('div')
+            title.className = 'title'
+            title.textContent =
+              typeof s.title === 'string' && s.title.length > 0 ? s.title : '（正在读取标题…）'
+            if (s.archived === true) {
+              const tag = document.createElement('span')
+              tag.className = 'badge archived'
+              tag.textContent = '已归档'
+              tag.title = 'DSH 侧栏里不会显示被归档的会话'
+              title.append(tag)
+            }
+            if (s.edits > 0) {
+              const badge = document.createElement('span')
+              badge.className = 'badge'
+              badge.textContent = `已改 ${s.edits}`
+              title.append(badge)
+            }
+            const meta = document.createElement('div')
+            meta.className = 'meta'
+            meta.textContent = `${fmtTime(s.mtime)} · ${fmtSize(s.bytes)} · ${s.sessionId.slice(0, 16)}…`
+            row.append(title, meta)
+            row.onclick = () => openSession(s.sessionId)
+            box.append(row)
+          }
+        }
+      }
+
+      async function openSession(sessionId) {
+        const data = await api(`/api/messages?session=${encodeURIComponent(sessionId)}`)
+        if (!data.ok) {
+          $('list').innerHTML = `<div class="empty">读取失败：${data.error}</div>`
+          return
+        }
+        current = data.session
+        messages = data.messages ?? []
+        history = data.history ?? []
+        editing = null
+        expanded = new Set()
+        const item = sessions.find((s) => s.sessionId === sessionId)
+        $('title').textContent =
+          item !== undefined && typeof item.title === 'string' && item.title.length > 0 ? item.title : sessionId
+        renderSessions()
+        renderMessages()
+      }
+
+      function messageHistory(seq) {
+        return history.filter((entry) => entry.seq === seq)
+      }
+
+      function renderMessages() {
+        const box = $('list')
+        const shown = visibleMessages()
+        const processCount = messages.filter((m) => isProcess(m)).length
+        $('count').textContent =
+          messages.length === 0
+            ? ''
+            : `显示 ${shown.length} / ${messages.length} 条（过程消息 ${processCount} 条）`
+
+        if (messages.length === 0) {
+          box.innerHTML = '<div class="empty">这个会话里还没有助手回复</div>'
+          return
+        }
+        if (shown.length === 0) {
+          box.innerHTML = '<div class="empty">没有符合条件的助手回复。勾选上方「显示过程消息」可以看到工具调用轮。</div>'
+          return
+        }
+        box.innerHTML = ''
+        for (const message of shown) {
+          const process = isProcess(message)
+          const card = document.createElement('div')
+          card.className =
+            'card' + (process ? ' process' : '') + (editing !== null && editing.seq === message.seq ? ' editing' : '')
+          card.dataset.seq = String(message.seq)
+
+          const edits = messageHistory(message.seq)
+          const isLong = message.text.length > 220
+          const isExpanded = expanded.has(message.seq)
+          const reasoningOpen = expanded.has(`r${message.seq}`)
+
+          const head = document.createElement('div')
+          head.className = 'head'
+          head.innerHTML =
+            `<span class="seq">#${message.seq}</span>` +
+            `<span class="tag${process ? ' tool' : ''}">${process ? '过程 · 工具调用' : '回答'}</span>` +
+            message.blockTypes.map((t) => `<span class="tag">${t}</span>`).join('') +
+            (edits.length > 0
+              ? `<span class="tag" style="border-color:var(--accent);color:var(--accent)">已改写 ${edits.length} 次</span>`
+              : '') +
+            `<span class="spacer"></span><span>${fmtTime(message.time)}</span>`
+          card.append(head)
+
+          if (editing !== null && editing.seq === message.seq) {
+            const area = document.createElement('textarea')
+            area.rows = 6
+            area.value = editing.text
+            area.oninput = () => { editing.text = area.value }
+            card.append(area)
+
+            const actions = document.createElement('div')
+            actions.className = 'actions'
+            const keep = document.createElement('input')
+            keep.type = 'checkbox'
+            keep.checked = editing.keepReasoning
+            keep.onchange = () => { editing.keepReasoning = keep.checked }
+            const keepLabel = document.createElement('label')
+            keepLabel.className = 'check'
+            keepLabel.append(keep, document.createTextNode('保留原来的思考块'))
+            const save = document.createElement('button')
+            save.className = 'primary'
+            save.textContent = '保存并写入日志'
+            save.onclick = () => saveEdit(message.seq, area.value, keep.checked, save)
+            const cancel = document.createElement('button')
+            cancel.textContent = '取消'
+            cancel.onclick = () => { editing = null; renderMessages() }
+            actions.append(save, cancel)
+            if (message.reasoning.trim().length > 0) actions.append(keepLabel)
+            card.append(actions)
+            if (editing.error !== undefined) {
+              const err = document.createElement('div')
+              err.className = 'err'
+              err.textContent = editing.error
+              card.append(err)
+            }
+          } else {
+            const body = document.createElement('div')
+            body.className = 'body' + (isExpanded ? ' expanded' : '')
+            body.textContent =
+              message.text.trim().length === 0 ? '（这一轮只有工具调用，没有文字回复）' : message.text
+            card.append(body)
+
+            // 思考块默认只给一小段摘要 —— 它同样是过程信息，不是要改的内容。
+            if (message.reasoning.trim().length > 0) {
+              const think = document.createElement('div')
+              think.className = 'body reasoning'
+              think.textContent = `思考：${
+                reasoningOpen
+                  ? message.reasoning
+                  : message.reasoning.slice(0, 100) + (message.reasoning.length > 100 ? '…' : '')
+              }`
+              card.append(think)
+            }
+
+            const actions = document.createElement('div')
+            actions.className = 'actions'
+            const edit = document.createElement('button')
+            edit.textContent = '改写'
+            edit.disabled = message.text.trim().length === 0
+            edit.onclick = () => {
+              editing = { seq: message.seq, text: message.text, keepReasoning: false }
+              renderMessages()
+              const area = document.querySelector(`.card[data-seq="${message.seq}"] textarea`)
+              if (area !== null) area.focus()
+            }
+            actions.append(edit)
+
+            const toggles = []
+            if (isLong) toggles.push({ label: isExpanded ? '收起' : '展开全文', key: message.seq })
+            if (message.reasoning.length > 100) {
+              toggles.push({ label: reasoningOpen ? '收起思考' : '展开思考', key: `r${message.seq}` })
+            }
+            for (const toggle of toggles) {
+              const button = document.createElement('button')
+              button.className = 'link'
+              button.textContent = toggle.label
+              button.onclick = () => {
+                if (expanded.has(toggle.key)) expanded.delete(toggle.key)
+                else expanded.add(toggle.key)
+                renderMessages()
+              }
+              actions.append(button)
+            }
+
+            const copy = document.createElement('button')
+            copy.className = 'link'
+            copy.textContent = '复制原文'
+            copy.onclick = () => {
+              navigator.clipboard.writeText(message.text)
+              copy.textContent = '已复制'
+              setTimeout(() => { copy.textContent = '复制原文' }, 1200)
+            }
+            actions.append(copy)
+            card.append(actions)
+
+            if (edits.length > 0) {
+              const hist = document.createElement('div')
+              hist.className = 'history'
+              for (const entry of edits) {
+                const row = document.createElement('div')
+                row.className = 'row'
+                const when = document.createElement('span')
+                when.className = 'muted'
+                when.textContent = fmtTime(entry.at)
+                const back = document.createElement('button')
+                back.className = 'link'
+                back.textContent = '回滚这次改写'
+                back.onclick = () => rollback(entry.id)
+                row.append(when, back)
+                hist.append(row)
+              }
+              card.append(hist)
+            }
+          }
+          box.append(card)
+        }
+      }
+
+      async function saveEdit(seq, text, keepReasoning, button) {
+        if (text.trim().length === 0) {
+          editing.error = '新文本不能为空'
+          renderMessages()
+          return
+        }
+        button.disabled = true
+        button.textContent = '写入中…'
+        const data = await api('/api/rewrite', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ session: current.sessionId, seq, text, keepReasoning }),
+        })
+        if (!data.ok) {
+          editing.error = data.error
+          renderMessages()
+          return
+        }
+        editing = null
+        await loadSessions()
+        await openSession(current.sessionId)
+      }
+
+      async function rollback(id) {
+        const data = await api('/api/rollback', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ session: current.sessionId, id }),
+        })
+        if (!data.ok) {
+          alert(`回滚失败：${data.error}`)
+          return
+        }
+        await loadSessions()
+        await openSession(current.sessionId)
+      }
+
+      async function checkHealth() {
+        const data = await api('/api/health')
+        const banner = $('banner')
+        if (data.dshRunning === true) {
+          banner.className = 'show'
+          banner.innerHTML =
+            '<strong>DeepSeek Harness 正在运行。</strong> 编辑前请先完全退出它——' +
+            '它内存里还握着旧的事件列表，边跑边改会让新旧内容混在一起。改完再启动，模型就会看到新文本。'
+        } else if (data.dshRunning === false) {
+          banner.className = 'show'
+          banner.style.borderColor = 'var(--ok)'
+          banner.style.background = 'transparent'
+          banner.innerHTML = 'DeepSeek Harness 未在运行，可以安全编辑。'
+        } else {
+          banner.className = ''
+        }
+      }
+
+      $('sessionSearch').oninput = (event) => { sessionFilter = event.target.value; renderSessions() }
+      $('messageSearch').oninput = (event) => { messageFilter = event.target.value; renderMessages() }
+      $('showProcess').onchange = () => renderMessages()
+      $('refresh').onclick = async () => {
+        await loadSessions()
+        if (current !== null) await openSession(current.sessionId)
+        await checkHealth()
+      }
+
+      loadSessions().then(checkHealth)
+    </script>
+  </body>
+</html>
