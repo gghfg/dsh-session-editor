@@ -11,7 +11,7 @@
 需要 **Node.js 22 或更新版本**（用到内置的 zstd 支持）。
 
 ```bash
-git clone https://github.com/<你的用户名>/dsh-session-editor.git
+git clone https://github.com/gghfg/dsh-session-editor.git
 cd dsh-session-editor
 npm install          # 可选：只影响校验与测试，界面本身零依赖
 ```
