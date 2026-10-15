@@ -16,8 +16,6 @@ cd dsh-session-editor
 npm install          # 可选：只影响校验与测试，界面本身零依赖
 ```
 
-> 想把这个项目传到自己的 GitHub？步骤见 **[GITHUB.md](GITHUB.md)**（含隐私检查、Token/SSH 登录、国内网络处理、常见报错）。
-
 Windows 上**双击 `start.cmd`**（自动打开浏览器），或手动启动：
 
 ```bash
