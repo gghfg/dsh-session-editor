@@ -157,12 +157,6 @@ Copy-Item <日志文件>.bak-<时间戳> <日志文件> -Force
 
 把里面某条 `assistant/message` 的文本块换掉，重启恢复会话时模型看到的就是新文本。角色字段没动，所以它仍然是 assistant 的发言。
 
-### 两个实测出来的坑
-
-1. **日志是「逐帧追加」的 zstd，不是一个 zstd 流。** 当前会话有 600+ 个 zstd 帧。Node 的 `zstdDecompressSync` 对多帧输入**只返回第一帧**，所以天真地解压整个文件只能拿到一行会话头（看起来像"日志是空的"）。必须按魔数 `28 B5 2F FD` 的位置切帧，逐帧 `[offs[k], offs[k+1])` 解压再拼接。
-
-2. **持久化是追加写**（`open(path, "a")` + `writeFile` + `sync`），不是整体重写。所以运行中改文件前部不会被后续写入覆盖；但内存里的会话仍是旧内容，务必按上面那个顺序做。
-
 ---
 
 ## 能改什么、不能改什么
@@ -235,7 +229,6 @@ DSH 升级到 v5 改了格式的话，读取会直接报错退出，不会把文
 | `test/run-all.mjs` | 一次跑完所有测试 |
 | `test/core.test.mjs`、`test/host.test.mjs` | 插件那半的逻辑回归测试 |
 | `test/roundtrip.test.mjs` | 改写 → 回滚的往返测试（含思考块） |
-| `GITHUB.md` | 上传到 GitHub 的完整步骤 |
 | `.edit-history.json` | 界面改写历史，供回滚；**含对话正文，别外传** |
 
 服务只监听回环地址，并拒绝任何非本机来源的请求，不向外暴露。
@@ -243,21 +236,7 @@ DSH 升级到 v5 改了格式的话，读取会直接报错退出，不会把文
 `verify-log.mjs` 与测试依赖 `@deepseek-ai/dsh-session@0.2.0-rc.2`（与本机 DSH 内部版本一致）。
 
 
----
 
-## 一个编码上的坑（已修）
-
-早期版本的 `start.cmd` 里写了中文注释和中文提示，双击后直接报一串乱码：
-
-```
-'Harness銆?setlocal' 不是内部或外部命令
-```
-
-原因：`.cmd` 文件是 UTF-8，而 cmd.exe 按**控制台代码页**（中文 Windows 上是 936/GBK）读取批处理文件，UTF-8 的中文字节被按 GBK 拆解后当成了命令去执行。
-
-现在的做法：
-
-1. `start.cmd` **保持纯 ASCII**（只有英文注释和 echo），这样命令行代码页随便怎么变都不会乱；
 2. 真正的启动逻辑放进 `start.ps1`（UTF-8 由 PowerShell 自己处理，双击链路里由 `pwsh -File` 读取）；
 3. `start.cmd` 先 `chcp 65001` 再启动 PowerShell，让 Node 的中文输出也能正常显示。
 
